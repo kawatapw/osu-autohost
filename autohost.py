@@ -10,8 +10,8 @@ class osuRC:
     '''osu IRC class, dipakai untuk connect ke server irc, terima dan kirim data.'''
     host = "irc.ppy.sh"
     port = 6667
-    realname = "Iam2Awesome"      #username
-    password = "f0afe733"         #cari di osu.ppy.sh/p/irc
+    realname = "YOUR_USERNAME_HERE"      #username
+    password = "YOUR_IRC_PASSWORD"         #cari di osu.ppy.sh/p/irc
     realname = realname.lower()
     reconnect = 0           #case connection fail
 
@@ -47,7 +47,7 @@ class osuRC:
         osuRC.reconnect = 1
 
 class osuHost:
-    roomname = "random 4* - 5* ranked | !info"              #room name
+    roomname = "ROOM_NAME_HERE"              #room name
     channel = "#indonesian"
     beatmap = 0             #beatmap going to !mp
     player = []             #people in room
@@ -101,8 +101,6 @@ class osuHost:
             else:
                 print('diff not found')
                 osuHost.nextmap()
-
-
 
     def getjoin():
         '''apakah ada yang join ke room?'''
@@ -300,7 +298,7 @@ class osuHost:
 
 class osuAPI:
     '''untuk ambil beatmap name, dsb'''
-    KEY = "ad8c161908bcf5bf8f595300537edbbecb7fc17b"         #cari di osu.ppy.sh/p/api
+    KEY = "YOUR_OSU_API_KEY_HERE"         #cari di osu.ppy.sh/p/api
     playlist = []
     a = 0
     b = 0
@@ -366,7 +364,7 @@ class osuAPI:
             if float(song['difficultyrating']) >= float(diffb) and float(song['difficultyrating']) < float(difft):
                 return song['beatmap_id']
 
-## Program start here
+## MAIN Program start here
 def main():
     '''main program'''
     osuRC.conn()
@@ -382,4 +380,5 @@ def main():
             osuHost.getcommand()
     time.sleep(2)
 
+## THE REAL EXECUTE
 main()
