@@ -1,1 +1,1 @@
-worker: python autohost.py
+worker: python test.py
