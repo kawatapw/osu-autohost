@@ -221,7 +221,7 @@ class osuHost:
             namaclean = nama.replace("_"," ")
             if osuRC.kata[0] not in osuHost.voterskip:
                 osuHost.voterskip.append(osuRC.kata[0])
-                minimalskip = int(len(osuHost.player)*0.5)
+                minimalskip = int(len(osuHost.player)*0.7)
                 if minimalskip < 1:
                     minimalskip = 1
                 osuRC.kirim("PRIVMSG "+osuHost.channel+" "+namaclean+" vote for skip ("+str(len(osuHost.voterskip))+"/"+str(minimalskip)+")")
@@ -230,6 +230,14 @@ class osuHost:
                     osuHost.nextmap()
             else:
                 osuRC.kirim("PRIVMSG "+nama+" You already vote for skip ...")
+
+    def commandADDREF():
+        '''addref kita jika ada di room'''
+        if osuRC.kata[3] == ":!addref" or osuRC.kata[3] == ":!ref":
+            nama = osuHost.getnama()
+            namaclean = nama.replace("_"," ")
+            osuRC.kirim("PRIVMSG "+nama+" "+namaclean+" added to ref.")
+            osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp addref "+nama)
 
     def commandAdd():
         '''menambahkan lagu ke queue'''
@@ -306,6 +314,7 @@ class osuHost:
             osuHost.commandInfo()
             osuHost.commandReady()
             osuHost.commandSkip()
+            osuHost.commandADDREF()
             osuHost.commandAdd()
 
 class osuAPI:
