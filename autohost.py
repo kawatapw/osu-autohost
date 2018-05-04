@@ -17,11 +17,15 @@ class osuRC:
 
     def conn():
         '''sambung ke server IRC osu!'''
-        osuRC.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        osuRC.s.connect((osuRC.host, osuRC.port))
-        osuRC.kirim("PASS %s" %osuRC.password)
-        osuRC.kirim("NICK %s" %osuRC.realname)
-        osuRC.kirim("USER %s %s bla :%s" % (osuRC.realname,osuRC.host,osuRC.realname))
+        try:
+            osuRC.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            osuRC.s.connect((osuRC.host, osuRC.port))
+            osuRC.kirim("PASS %s" %osuRC.password)
+            osuRC.kirim("NICK %s" %osuRC.realname)
+            osuRC.kirim("USER %s %s bla :%s" % (osuRC.realname,osuRC.host,osuRC.realname))
+            return True
+        except:
+            return False
 
     def kirim(x):
         '''mengirim ke IRC'''
@@ -95,14 +99,12 @@ class osuHost:
             mapsetpop = osuAPI.playlist.pop(0)
             mapsetsel = osuAPI.getmapbyset(set=mapsetpop,diffb=osuAPI.diffb,difft=osuAPI.difft)
             if mapsetsel != None:
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" no more queueing map, please add with *add <beatmaplink>. i'll choose random instead.")
+                osuRC.kirim("PRIVMSG "+osuHost.channel+" no more queueing map, please add with !add <beatmaplink>. i'll choose random for now.")
                 osuHost.beatmap = mapsetsel
                 osuHost.changemap(osuHost.beatmap)
             else:
                 print('diff not found')
                 osuHost.nextmap()
-
-
 
     def getjoin():
         '''apakah ada yang join ke room?'''
@@ -119,7 +121,10 @@ class osuHost:
             lenlist = len(osuRC.kata)-3
             nama = '_'.join(osuRC.kata[3:lenlist])
             nama = nama.replace(':','')
-            osuHost.player.remove(nama)
+            try:
+                osuHost.player.remove(nama)
+            except:
+                pass
             print(osuHost.player)
 
     def isgamestart():
@@ -162,37 +167,35 @@ class osuHost:
                     a = osuAPI.getName(item)
                     if a != None:
                         showlist.append(a)
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" queue "+' | '.join(showlist))
+                osuRC.kirim("PRIVMSG "+osuHost.channel+" Queue:"+str(len(showlist))+"  "+'  ||  '.join(showlist))
             else:
                 osuRC.kirim("PRIVMSG "+osuHost.channel+" empty queue")
 
     def commandDiff():
         if osuRC.kata[3] == ":!d" or osuRC.kata[3] == ":!diff" or osuRC.kata[3] == ":!star":
             if len(osuRC.kata) == 6:
-                if float(osuRC.kata[4]) < float(osuRC.kata[5]):
-                    osuAPI.diffb = osuRC.kata[4]
-                    osuAPI.difft = osuRC.kata[5]
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" set difficulty from "+str(osuAPI.diffb)+" to "+str(osuAPI.difft))
-                elif float(osuRC.kata[4]) > float(osuRC.kata[5]):
-                    osuAPI.diffb = osuRC.kata[4]
-                    osuAPI.difft = osuRC.kata[5]
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" set difficulty from "+str(osuAPI.diffb)+" to "+str(osuAPI.difft))
-                else:
+                try:
+                    if float(osuRC.kata[4]) < float(osuRC.kata[5]):
+                        osuAPI.diffb = osuRC.kata[4]
+                        osuAPI.difft = osuRC.kata[5]
+                        osuRC.kirim("PRIVMSG "+osuHost.channel+" set difficulty from "+str(osuAPI.diffb)+" to "+str(osuAPI.difft))
+                    elif float(osuRC.kata[4]) > float(osuRC.kata[5]):
+                        osuAPI.diffb = osuRC.kata[4]
+                        osuAPI.difft = osuRC.kata[5]
+                        osuRC.kirim("PRIVMSG "+osuHost.channel+" set difficulty from "+str(osuAPI.diffb)+" to "+str(osuAPI.difft))
+                    else:
+                        osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong command. example: !star 4.5 5.2")
+                except:
                     osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong command. example: !star 4.5 5.2")
             else:
                 osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong command. example: !star 4.5 5.2")
 
     def commandInfo():
         '''kasih info'''
-        if osuRC.kata[3] == ":!h" or osuRC.kata[3] == ":!info":
+        if osuRC.kata[3] == ":!i" or osuRC.kata[3] == ":!info":
             nama = osuHost.getnama()
             namaclean = nama.replace("_"," ")
-            osuRC.kirim("PRIVMSG "+osuHost.channel+" info sent to "+namaclean+" personal message.")
-            osuRC.kirim("PRIVMSG "+nama+" command : !r or !ready or !go = vote for start ")
-            osuRC.kirim("PRIVMSG "+nama+" command : !s or !skip or !pass = vote for skip ")
-            osuRC.kirim("PRIVMSG "+nama+" command : !q or !queue or !list = display beatmap queue ")
-            osuRC.kirim("PRIVMSG "+nama+" command : !d or !diff or !star = change difficulty limit (affect random song & beatmapset only) ")
-            osuRC.kirim("PRIVMSG "+nama+" command : !add <beatmaplink> = add beatmap, example: !add https://osu.ppy.sh/b/1264070&m=0 ")
+            osuRC.kirim("PRIVMSG "+osuHost.channel+" Autohost under developement. Made by [http://github.com/kron3 kron3], See all available command [https://github.com/kron3/osu-autohost/wiki/OSU-Autohost-Wiki here].")
 
     def commandReady():
         '''vote mulai'''
@@ -237,6 +240,8 @@ class osuHost:
                     getmap = getmap.replace("osu.ppy.sh/b/","")
                     getmap = getmap.split("&")
                     getmap = getmap[0]
+                    getmap = getmap.split("?")
+                    getmap = getmap[0]
                     osuHost.mapqueue.append(getmap)
                     judulmap = osuAPI.getName(map = getmap)
                     osuRC.kirim("PRIVMSG "+osuHost.channel+" "+judulmap+" added to queue ("+str(len(osuHost.mapqueue))+")")
@@ -256,7 +261,7 @@ class osuHost:
                     if judulmap == 'None':
                         osuRC.kirim("PRIVMSG "+osuHost.channel+" that beatmap list not have standarized difficulty! make sure it have ("+osuAPI.diffb+"*-"+osuAPI.difft+"*) difficulty.")
                     else:
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" You input a beatmap set (/s/). You should input beatmap id (/b/) instead, i'll choose standard difficulty ...")
+                        osuRC.kirim("PRIVMSG "+osuHost.channel+" You input a beatmap set. i'll choose the difficulty for you ...")
                         osuRC.kirim("PRIVMSG "+osuHost.channel+" "+judulmap+" added to queue ("+str(len(osuHost.mapqueue))+")")
                         print(osuHost.mapqueue)
                         if osuHost.beatmap == 0:
@@ -266,13 +271,18 @@ class osuHost:
                     getmap = osuRC.kata[4].replace("https://","")
                     getmap = getmap.split("/")
                     getmap = getmap[len(getmap)-1]
-                    osuHost.mapqueue.append(getmap)
+                    if "#" in getmap:
+                        getmap = osuAPI.getmapbyset(set=getmap,diffb=osuAPI.diffb,difft=osuAPI.difft)
+                        getmap = str(getmap)
+                        osuRC.kirim("PRIVMSG "+osuHost.channel+" You input a beatmap set. i'll choose the difficulty for you ...")
+                    if getmap != 'None':
+                        osuHost.mapqueue.append(getmap)
                     judulmap = osuAPI.getName(map = getmap)
                     osuRC.kirim("PRIVMSG "+osuHost.channel+" "+judulmap+" added to queue ("+str(len(osuHost.mapqueue))+")")
                     if osuHost.beatmap == 0:
                         osuHost.nextmap()
                 else:
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong beatmap link, make sure you use /b/ link not /s/. it is better to search and select difficulty from https://new.ppy.sh")
+                    osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong or unsupported beatmap link.")
         except:
             osuRC.kirim("PRIVMSG "+osuHost.channel+" unexpectedError on !add command - make sure the command is !add https://osu.ppy.sh/s/<beatmapset_id>.")
 
@@ -369,7 +379,11 @@ class osuAPI:
 ## Program start here
 def main():
     '''main program'''
-    osuRC.conn()
+    connection = osuRC.conn()
+    if connection != True:
+        print(connection)
+        quit()
+    osuHost.roomname = input("Room Name: ")
     osuHost.makeroom()
     while 1:
         data = osuRC.terima().split("\n")
