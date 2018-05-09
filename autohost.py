@@ -1,4 +1,4 @@
-import sys,socket,string,os,time,random,json
+import sys,socket,string,os,time,random,json,_thread
 try:
     import requests
 except ImportError:
@@ -6,403 +6,542 @@ except ImportError:
     os.system('pip install requests')
     import requests
 
-class osuRC:
+class osuIRC:
     '''osu IRC class, dipakai untuk connect ke server irc, terima dan kirim data.'''
     host = "irc.ppy.sh"
     port = 6667
-    realname = "Iam2Awesome"      #username
-    password = "f0afe733"         #cari di osu.ppy.sh/p/irc
-    realname = realname.lower()
-    reconnect = 0           #case connection fail
+    UID = "Iam2Awesome".lower()
+    KEY = "f0afe733".lower()
 
-    def conn():
+    def connect():
         '''sambung ke server IRC osu!'''
         try:
-            osuRC.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            osuRC.s.connect((osuRC.host, osuRC.port))
-            osuRC.kirim("PASS %s" %osuRC.password)
-            osuRC.kirim("NICK %s" %osuRC.realname)
-            osuRC.kirim("USER %s %s bla :%s" % (osuRC.realname,osuRC.host,osuRC.realname))
+            osuIRC.IRC = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            osuIRC.IRC.connect((osuIRC.host, osuIRC.port))
+            osuIRC.send("PASS %s" %osuIRC.KEY)
+            osuIRC.send("NICK %s" %osuIRC.UID)
+            osuIRC.send("USER %s %s bla :%s" % (osuIRC.UID,osuIRC.host,osuIRC.UID))
             return True
         except:
+            print('cannot connect to IRC server')
             return False
-
-    def kirim(x):
+    def send(x):
         '''mengirim ke IRC'''
-        osuRC.s.send((x+"\r\n").encode())
+        osuIRC.IRC.send((x+"\r\n").encode())
 
-    def terima(size=4096):
-        '''menerima dari IRC, conver ke lower caps, decode utf-8 menjadi string'''
-        return osuRC.s.recv(size).lower().decode()
+    def recv(size=4096):
+        '''menerima dari IRC, convert ke lower caps, decode utf-8 menjadi string'''
+        return osuIRC.IRC.recv(size).decode().lower()
 
-    def cetak(file):
+    def show(file):
         '''cetak jika bukan baris kosong, notifikasi join atau notifikasi quit'''
-        osuRC.kata = file.split(" ")
-        if len(osuRC.kata) > 2:
-            if osuRC.kata[1]!=("quit" or "join"):
+        osuIRC.kata = file.split(" ")
+        if len(osuIRC.kata)>2 :
+            if osuIRC.kata[1] != ("quit" or "join"):
                 print(file)
 
-    def disconnected():
-        '''jancuk, disconnect :( ,,, oke kita sambungkan ulang....'''
-        osuRC.s.shutdown(socket.SHUT_RDWR)
-        osuRC.s.close()
-        osuRC.conn()
-        osuRC.kirim("JOIN "+osuHost.channel+"")
-        osuRC.reconnect = 1
+    def DC():
+        '''case disconnected'''
+        osuIRC.IRC.shutdown(socket.SHUT_RDWR)
+        osuIRC.IRC.close()
+        osuIRC.connect()
+        for room in osuCMD.roomList:
+            osuIRC.send("JOIN %s" %room.id)
 
-class osuHost:
-    roomname = "random 4* - 5* ranked | !info"              #room name
-    channel = "#indonesian"
-    beatmap = 0             #beatmap going to !mp
-    player = []             #people in room
-    voterstart = []         #voter to start
-    voterskip = []          #voter to skip\
-    voterdiff = []          #voter to change difficulty
-    mapqueue = []           #beatmap queue list
 
-    def makeroom():
-        ''' buat room '''
-        osuRC.kirim("PRIVMSG banchobot !mp make "+osuHost.roomname+"")
+class osuRoom:
+    def __init__(self,maker,name="",id=""):
+        self.maker = maker
+        self.nowBM = '0'
+        self.player = []
+        self.start = []
+        self.skip = []
+        self.queue = []
+        self.lastRand = None
+        self.setRand = []
+        self.roomNumber = 0
+        self.difficulty = ['3','4']
+        if(name=="" and id!=""):
+            self.id = id
+            self.getPlayerList = True
+            self.name = "INVITED ROOM "+str(time.time())
+            _thread.start_new_thread(self.getPlayer,())
+            print('thread started succesfully')
+        elif(name!="" and id==""):
+            self.name = name
+            self.getID = True
+            self.getNumber = True
+            osuIRC.send("PRIVMSG banchobot !mp make %s | !info" %self.name)
+            _thread.start_new_thread(self.getRoomID,())
+            _thread.start_new_thread(self.getRoomNumber,())
+            print('thread started succesfully')
+        _thread.start_new_thread(self.watchdog,())
 
-    def getCreatedRoomID():
-        ''' ambil id room yang dibuat '''
-        if len(osuRC.kata) > 2:
-            if osuRC.kata[0] == ":banchobot!cho@cho.ppy.sh" and osuRC.kata[1] == "mode":
-                osuHost.channel = osuRC.kata[2]
-                print(osuHost.channel)
-                if osuRC.reconnect == 0:
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp password")
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp set 0 0 16")
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp mods freemod")
-
-    def closeroom():
-        ''' tutup room '''
-        osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp close")
-
-    def startroom(time='5'):
-        ''' mulai game'''
-        osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp start "+time+"")
-
-    def changemap(mapID):
-        ''' ganti beatmap '''
-        osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp map "+mapID+"")
-
-    def nextmap():
-        if len(osuHost.mapqueue) != 0:
-            osuHost.beatmap = osuHost.mapqueue.pop(0)
-            osuHost.changemap(osuHost.beatmap)
+    def watchdog(self):
+        time.sleep(120)
+        if self.player == []:
+            self.close()
+            print('watchdog bite')
         else:
-            if osuAPI.playlist == []:
-#                osuAPI.getRand(diffb=osuAPI.diffb,difft=osuAPI.difft)
-#            osuHost.beatmap = osuAPI.playlist.pop(0)
-                osuAPI.getRand()
-            mapsetpop = osuAPI.playlist.pop(0)
-            mapsetsel = osuAPI.getmapbyset(set=mapsetpop,diffb=osuAPI.diffb,difft=osuAPI.difft)
-            if mapsetsel != None:
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" no more queueing map, please add with !add <beatmaplink>. i'll choose random for now.")
-                osuHost.beatmap = mapsetsel
-                osuHost.changemap(osuHost.beatmap)
+            self.watchdog()
+
+    def getPlayer(self):
+        print('getting player...')
+        now = time.time()
+        begin = now
+        while(self.getPlayerList and now-begin<20):
+            if len(osuIRC.kata) > 2:
+                if(osuIRC.kata[1] == "353" and osuIRC.kata[5] == ":@banchobot"):
+                    player = osuIRC.kata[6:]
+                    try:
+                        player.remove("+"+osuIRC.UID)
+                        player.remove("\r")
+                    except:
+                        print('cannot remove autohost id from player')
+                    self.player.extend(player)
+                    self.getPlayerList = False
+                    osuIRC.send("PRIVMSG "+self.maker+" Joined the room")
+                    print(self.player)
+
+    def getRoomNumber(self):
+        print('getting room number...')
+        now = time.time()
+        begin = now
+        while(self.getID and self.getNumber and now-begin<20):
+            if len(osuIRC.kata) > 2:
+                if osuIRC.kata[1] == "332":
+                    self.number = osuIRC.kata[len(osuIRC.kata)-1].replace("#","")
+                    osuIRC.send("PRIVMSG "+self.maker+" room created [osump://%s/ JOIN HERE]" %self.number)
+                    self.getNumber = False
+            now = time.time()
+        if now-begin > 20:
+            print('cannot obtain number')
+
+    def getRoomID(self):
+        print('getting room id...')
+        now = time.time()
+        begin = now
+        while(self.getID and self.getNumber and now-begin<20):
+            if len(osuIRC.kata) > 2:
+                if osuIRC.kata[1] == "mode":
+                    self.id = osuIRC.kata[2]
+                    osuIRC.send("PRIVMSG "+self.id+" !mp password")
+                    osuIRC.send("PRIVMSG "+self.id+" !mp set 0 0 16")
+                    osuIRC.send("PRIVMSG "+self.id+" !mp mods freemod")
+                    self.getID = False
+                    self.next()
+            now = time.time()
+        if now-begin > 20:
+            print('cannot obtain id')
+
+    def close(self):
+        osuIRC.send("PRIVMSG "+self.id+" !mp close")
+
+    def begin(self,time=5):
+        osuIRC.send("PRIVMSG "+self.id+" !mp start %s" %str(time))
+        self.start = []
+        self.skip = []
+
+    def change(self,mapID):
+        osuIRC.send("PRIVMSG "+self.id+" !mp map %s" %str(mapID))
+
+    def next(self):
+        print("\ngetting next song\n")
+        if len(self.queue) != 0:
+            print('get from queue')
+            self.nowBM = self.queue.pop(0)
+            PP = osuAPI.getMaxPP(self.nowBM)
+            mods = ['FC','HD','HR','HRHD']
+            for mod in mods:
+                if PP[mod] == 'None':
+                    PP[mod] == '0'
+            self.change(self.nowBM)
+            osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" ||   FC: %s pp   HD: %s pp   HR: %s pp   HRHD: %s pp" %(PP['FC'],PP['HD'],PP['HR'],PP['HRHD']))
+            self.start = []
+            self.skip = []
+        else:
+            print("get random")
+            if self.setRand == []:
+                print('empty set random')
+                self.lastRand,self.setRand = osuAPI.setRand(self.lastRand)
+            getmap = osuAPI.mapFromSet(self.setRand.pop(0),self.difficulty)
+            print(getmap)
+            if getmap != None:
+                osuIRC.send("PRIVMSG "+self.id+" no more queueing map, please add with !add <beatmaplink>. i'll choose random for now.")
+                self.nowBM = getmap
+                PP = osuAPI.getMaxPP(self.nowBM)
+                mods = ['FC','HD','HR','HRHD']
+                for mod in mods:
+                    if PP[mod] == 'None':
+                        PP[mod] == '0'
+                self.change(self.nowBM)
+                osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" ||   FC: %s pp   HD: %s pp   HR: %s pp   HRHD: %s pp" %(PP['FC'],PP['HD'],PP['HR'],PP['HRHD']))
+                self.start = []
+                self.skip = []
             else:
-                print('diff not found')
-                osuHost.nextmap()
+                self.next()
 
-    def getjoin():
-        '''apakah ada yang join ke room?'''
-        if osuRC.baris.find("joined in slot") != -1:
-            lenlist = len(osuRC.kata)-4
-            nama = '_'.join(osuRC.kata[3:lenlist])
-            nama = nama.replace(':','')
-            osuHost.player.append(nama)
-            print(osuHost.player)
+    def join(self,name):
+        self.player.append(name)
+        print(self.name,self.player)
 
-    def getquit():
-        '''siapa yang keluar dibuang dari list'''
-        if osuRC.baris.find("left the game.") != -1:
-            lenlist = len(osuRC.kata)-3
-            nama = '_'.join(osuRC.kata[3:lenlist])
-            nama = nama.replace(':','')
-            try:
-                osuHost.player.remove(nama)
-            except:
-                pass
-            print(osuHost.player)
-
-    def isgamestart():
-        '''cek apakah game sudah dimulai'''
-        if osuRC.baris.find(":the match has started!") != -1:
-            osuHost.voterstart = []
-            osuHost.voterskip = []
-
-    def isgamefinish():
-        '''cek apakah game selesai?'''
-        if osuRC.baris.find(":the match has finished!") != -1 or osuRC.baris.find(":aborted the match") != -1:
-            osuHost.nextmap()
-
-    def isclosed():
-        '''cek apakah room ditutup pakai !mp closed?'''
-        if osuRC.baris.find(":closed the match") != -1:
-            osuHost.closeroom()
-            quit()
-
-    def isallready():
-        '''apakah semua siap?'''
-        if osuRC.baris.find(":all players are ready") != -1:
-            osuHost.startroom()
-
-    def getnama():
-        nama = osuRC.kata[0].replace(':','')
-        return nama.replace("!cho@ppy.sh","")
-
-    def commandPing():
-        if osuRC.kata[3] == ":!p" or osuRC.kata[3] == ":!hi":
-            nama = osuHost.getnama()
-            nama = nama.replace("_"," ")
-            osuRC.kirim("PRIVMSG "+osuHost.channel+" hi "+nama+" -- automatic reply")
-
-    def commandQueue():
-        showlist = []
-        if osuRC.kata[3] == ":!q" or osuRC.kata[3] == ":!queue" or osuRC.kata[3] == ":!list":
-            if osuHost.mapqueue != []:
-                for item in osuHost.mapqueue:
-                    a = osuAPI.getName(item)
-                    if a != None:
-                        showlist.append(a)
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" Queue:"+str(len(showlist))+"  "+'  ||  '.join(showlist))
-            else:
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" empty queue")
-
-    def commandDiff():
-        if osuRC.kata[3] == ":!d" or osuRC.kata[3] == ":!diff" or osuRC.kata[3] == ":!star":
-            if len(osuRC.kata) == 6:
-                try:
-                    if float(osuRC.kata[4]) < float(osuRC.kata[5]):
-                        osuAPI.diffb = osuRC.kata[4]
-                        osuAPI.difft = osuRC.kata[5]
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" set difficulty from "+str(osuAPI.diffb)+" to "+str(osuAPI.difft))
-                    elif float(osuRC.kata[4]) > float(osuRC.kata[5]):
-                        osuAPI.diffb = osuRC.kata[4]
-                        osuAPI.difft = osuRC.kata[5]
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" set difficulty from "+str(osuAPI.diffb)+" to "+str(osuAPI.difft))
-                    else:
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong command. example: !star 4.5 5.2")
-                except:
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong command. example: !star 4.5 5.2")
-            else:
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong command. example: !star 4.5 5.2")
-
-    def commandInfo():
-        '''kasih info'''
-        if osuRC.kata[3] == ":!i" or osuRC.kata[3] == ":!info":
-            nama = osuHost.getnama()
-            namaclean = nama.replace("_"," ")
-            osuRC.kirim("PRIVMSG "+osuHost.channel+" Autohost under developement. Made by [http://github.com/kron3 kron3], See all available command [https://github.com/kron3/osu-autohost/wiki/OSU-Autohost-Wiki here].")
-
-    def commandReady():
-        '''vote mulai'''
-        if osuRC.kata[3] == ":!r" or osuRC.kata[3] == ":!ready" or osuRC.kata[3] == ":!go":
-            nama = osuHost.getnama()
-            namaclean = nama.replace("_"," ")
-            if osuRC.kata[0] not in osuHost.voterstart:
-                osuHost.voterstart.append(osuRC.kata[0])
-                minimalstart = int(len(osuHost.player)*0.75)
-                if minimalstart < 1:
-                    minimalstart = 1
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" "+namaclean+" vote for start ("+str(len(osuHost.voterstart))+"/"+str(minimalstart)+")")
-                if len(osuHost.voterstart) >= minimalstart:
-                    osuHost.voterstart = []
-                    osuHost.startroom()
-            else:
-                osuRC.kirim("PRIVMSG "+nama+" You already vote for start ...")
-
-    def commandSkip():
-        '''vote skip lagu saat ini'''
-        if osuRC.kata[3] == ":!s" or osuRC.kata[3] == ":!skip" or osuRC.kata[3] == ":!pass":
-            nama = osuHost.getnama()
-            namaclean = nama.replace("_"," ")
-            if osuRC.kata[0] not in osuHost.voterskip:
-                osuHost.voterskip.append(osuRC.kata[0])
-                minimalskip = int(len(osuHost.player)*0.7)
-                if minimalskip < 1:
-                    minimalskip = 1
-                osuRC.kirim("PRIVMSG "+osuHost.channel+" "+namaclean+" vote for skip ("+str(len(osuHost.voterskip))+"/"+str(minimalskip)+")")
-                if len(osuHost.voterskip) >= minimalskip:
-                    osuHost.voterskip = []
-                    osuHost.nextmap()
-            else:
-                osuRC.kirim("PRIVMSG "+nama+" You already vote for skip ...")
-
-    def commandADDREF():
-        '''addref kita jika ada di room'''
-        if osuRC.kata[3] == ":!addref" or osuRC.kata[3] == ":!ref":
-            nama = osuHost.getnama()
-            namaclean = nama.replace("_"," ")
-            osuRC.kirim("PRIVMSG "+nama+" "+namaclean+" added to ref.")
-            osuRC.kirim("PRIVMSG "+osuHost.channel+" !mp addref "+nama)
-
-    def commandAdd():
-        '''menambahkan lagu ke queue'''
+    def quit(self,name):
         try:
-            if osuRC.kata[3] == ":!add" or osuRC.kata[3] == ":+":
-                if "osu.ppy.sh/b/" in osuRC.kata[4]:
-                    getmap = osuRC.kata[4].replace("https://","")
-                    getmap = getmap.replace("osu.ppy.sh/b/","")
-                    getmap = getmap.split("&")
-                    getmap = getmap[0]
-                    getmap = getmap.split("?")
-                    getmap = getmap[0]
-                    osuHost.mapqueue.append(getmap)
-                    judulmap = osuAPI.getName(map = getmap)
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" "+judulmap+" added to queue ("+str(len(osuHost.mapqueue))+")")
-                    print(osuHost.mapqueue)
-                    if osuHost.beatmap == 0:
-                        osuHost.nextmap()
-
-                elif "osu.ppy.sh/s/" in osuRC.kata[4]:
-                    getset = osuRC.kata[4].replace("https://","")
-                    getset = getset.replace("osu.ppy.sh/s/","")
-                    getmap = osuAPI.getmapbyset(set=getset,diffb=osuAPI.diffb,difft=osuAPI.difft)
-                    getmap = str(getmap)
-                    if getmap != 'None':
-                        osuHost.mapqueue.append(getmap)
-                    judulmap = osuAPI.getName(map = getmap)
-                    judulmap = str(judulmap)
-                    if judulmap == 'None':
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" that beatmap list not have standarized difficulty! make sure it have ("+osuAPI.diffb+"*-"+osuAPI.difft+"*) difficulty.")
-                    else:
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" You input a beatmap set. i'll choose the difficulty for you ...")
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" "+judulmap+" added to queue ("+str(len(osuHost.mapqueue))+")")
-                        print(osuHost.mapqueue)
-                        if osuHost.beatmap == 0:
-                            osuHost.nextmap()
-
-                elif "/beatmapsets/" in osuRC.kata[4]:
-                    getmap = osuRC.kata[4].replace("https://","")
-                    getmap = getmap.split("/")
-                    getmap = getmap[len(getmap)-1]
-                    if "#" in getmap:
-                        getmap = osuAPI.getmapbyset(set=getmap,diffb=osuAPI.diffb,difft=osuAPI.difft)
-                        getmap = str(getmap)
-                        osuRC.kirim("PRIVMSG "+osuHost.channel+" You input a beatmap set. i'll choose the difficulty for you ...")
-                    if getmap != 'None':
-                        osuHost.mapqueue.append(getmap)
-                    judulmap = osuAPI.getName(map = getmap)
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" "+judulmap+" added to queue ("+str(len(osuHost.mapqueue))+")")
-                    if osuHost.beatmap == 0:
-                        osuHost.nextmap()
-                else:
-                    osuRC.kirim("PRIVMSG "+osuHost.channel+" wrong or unsupported beatmap link.")
+            self.player.remove(name)
         except:
-            osuRC.kirim("PRIVMSG "+osuHost.channel+" unexpectedError on !add command - make sure the command is !add https://osu.ppy.sh/s/<beatmapset_id>.")
+            print('cannot find that player')
+        print(self.name,self.player)
+
+class osuCMD:
+    roomList = []
+    last_makename = ''
+
+    def getBasic():
+        if(len(osuIRC.kata))>1:
+            osuCMD.issuer = osuIRC.kata[0].replace(":","").replace("!cho@ppy.sh","")
+            osuCMD.type = osuIRC.kata[1]
+            if(osuCMD.type=="privmsg"):
+                osuCMD.channel = osuIRC.kata[2]
+                osuCMD.chat = osuIRC.kata[3:]
+            else:
+                osuCMD.channel = None
+                osuCMD.chat = None
+
+    def getMake():
+        if(osuCMD.channel == osuIRC.UID and osuCMD.chat[0] == ":!make"):
+            roomname = ' '.join(osuCMD.chat[1:])
+            if roomname != osuCMD.last_makename:
+                osuCMD.roomList.append(osuRoom(name=roomname,maker=osuCMD.issuer))
+                osuCMD.last_makename = roomname
+            else:
+                print('double detected')
+
+    def getInvite():
+        if(osuCMD.channel == osuIRC.UID and osuCMD.chat[0] == ":!invite"):
+            roomid = osuCMD.chat[1]
+            isduplicate = False
+            for item in osuCMD.roomList:
+                if item.id == roomid:
+                    isduplicate = True
+            if isduplicate == False:
+                osuCMD.roomList.append(osuRoom(id=roomid,maker=osuCMD.issuer))
+                osuIRC.send("JOIN "+roomid)
+            else:
+                osuIRC.send("PRIVMSG "+osuCMD.issuer+" "+roomid+" already registered in our database!")
 
 
-    def getnotif():
-        '''just caller'''
-        osuHost.getCreatedRoomID()
-        osuHost.getjoin()
-        osuHost.getquit()
-        osuHost.isgamestart()
-        osuHost.isgamefinish()
-        osuHost.isallready()
-        osuHost.isclosed()
+    def getClose():
+        if (osuCMD.chat[0] == ":!cya"):
+            for item in osuCMD.roomList:
+                if item.maker == osuCMD.issuer:
+                    if item.id == osuCMD.channel:
+                        item.close()
+                        osuCMD.roomList.remove(item)
 
-    def getcommand():
-        '''just caller'''
-        if len(osuRC.kata) > 3:
-            osuHost.commandPing()
-            osuHost.commandQueue()
-            osuHost.commandDiff()
-            osuHost.commandInfo()
-            osuHost.commandReady()
-            osuHost.commandSkip()
-            osuHost.commandADDREF()
-            osuHost.commandAdd()
+    def getJoin():
+        if osuIRC.baris.find("joined in slot") != -1:
+            if osuCMD.issuer == 'banchobot':
+                lenlist = len(osuIRC.kata)-4
+                name = '_'.join(osuIRC.kata[3:lenlist])
+                name = name.replace(':','')
+                for item in osuCMD.roomList:
+                    if item.id == osuCMD.channel:
+                        item.join(name)
+
+    def getQuit():
+        if osuIRC.baris.find("left the game") != -1:
+            if osuCMD.issuer == 'banchobot':
+                lenlist = len(osuIRC.kata)-3
+                name = '_'.join(osuIRC.kata[3:lenlist])
+                name = name.replace(':','')
+                for item in osuCMD.roomList:
+                    if item.id == osuCMD.channel:
+                        item.quit(name)
+
+    def getGameStart():
+        if osuIRC.baris.find(":the match has started!") != -1:
+            if osuCMD.issuer == 'banchobot':
+                for item in osuCMD.roomList:
+                    if item.id == osuCMD.channel:
+                        item.start = []
+                        item.skip = []
+
+    def getGameFinish():
+        if osuIRC.baris.find(":the match has finished!") != -1 or osuIRC.baris.find(":aborted the match") != -1:
+            if osuCMD.issuer == 'banchobot':
+                for item in osuCMD.roomList:
+                    if item.id == osuCMD.channel:
+                        item.start = []
+                        item.skip = []
+                        item.next()
+
+    def getAllReady():
+        if osuIRC.baris.find(":all players are ready") != -1:
+            if osuCMD.issuer == 'banchobot':
+                for item in osuCMD.roomList:
+                    if item.id == osuCMD.channel:
+                        item.begin()
+
+    def cmdQueue():
+        showlist = []
+        if(osuCMD.chat[0] == ':!q' or osuCMD.chat[0] == ':!queue'):
+            for item in osuCMD.roomList:
+                if item.id == osuCMD.channel:
+                    if item.queue != []:
+                        for que in item.queue:
+                            name = osuAPI.songName(map=que)
+                            if name != None:
+                                showlist.append(name)
+                        osuIRC.send("PRIVMSG "+item.id+" Queue:"+str(len(showlist))+"  ||  "+'  ||  '.join(showlist))
+                    else:
+                        osuIRC.send("PRIVMSG "+item.id+" Empty Queue :(")
+
+    def cmdDiff():
+        if(osuCMD.chat[0] == ':!diff' or osuCMD.chat[0] == ':!d'):
+            for item in osuCMD.roomList:
+                if item.id == osuCMD.channel:
+                    if len(osuCMD.chat) == 3:
+                        try:
+                            if float(osuCMD.chat[1]) < float(osuCMD.chat[2]):
+                                item.difficulty = [osuCMD.chat[1],osuCMD.chat[2]]
+                                osuIRC.send("PRIVMSG "+item.id+" Set difficulty from "+item.difficulty[0]+"★ to "+item.difficulty[1]+"★.")
+                            elif float(osuCMD.chat[1]) > float(osuCMD.chat[2]):
+                                item.difficulty = [osuCMD.chat[2],osuCMD.chat[1]]
+                            else:
+                                osuIRC.send("PRIVMSG "+item.id+" wrong command. example: !diff 4.5 5.2")
+                        except:
+                            osuIRC.send("PRIVMSG "+item.id+" wrong command. example: !diff 4.5 5.2")
+                    else:
+                        osuIRC.send("PRIVMSG "+item.id+" wrong command. example: !diff 4.5 5.2")
+
+    def cmdInfo():
+        if(osuCMD.chat[0] == ':!i' or osuCMD.chat[0] == ':!info'):
+            osuIRC.send("PRIVMSG "+osuCMD.channel+" Autohost under developement. Made by [http://github.com/kron3 kron3], See all available command [https://github.com/kron3/osu-autohost/wiki/OSU-Autohost-Wiki here].")
+
+    def cmdReady():
+        if(osuCMD.chat[0] == ':!r' or osuCMD.chat[0] == ':!ready'):
+            for item in osuCMD.roomList:
+                if item.id == osuCMD.channel:
+                    if osuCMD.issuer not in item.start:
+                        item.start.append(osuCMD.issuer)
+                        minimalstart = int(len(item.player)*0.7)
+                        if minimalstart<1:
+                            minimalstart = 1
+                        osuIRC.send("PRIVMSG "+item.id+" "+osuCMD.issuer+" vote for start ("+str(len(item.start))+"/"+str(minimalstart)+")")
+                        if len(item.start) >= minimalstart:
+                            item.begin()
+                    else:
+                        osuIRC.send("PRIVMSG "+osuCMD.issuer+" You already vote for start ...")
+
+    def cmdRef():
+        if(osuCMD.chat[0] == ':!ref' or osuCMD.chat[0] == ':!f'):
+            for item in osuCMD.roomList:
+                if item.id == osuCMD.channel:
+                    if osuCMD.issuer == item.maker:
+                        if(len(osuCMD.chat)>1):
+                            people = " ".join(osuCMD.chat[1:])
+                            if people in item.player:
+                                osuIRC.send("PRIVMSG "+item.id+" !mp addref "+people)
+                            else:
+                                osuIRC.send("PRIVMSG "+item.id+" "+people+" not exist in this room!")
+                        else:
+                            osuIRC.send("PRIVMSG "+item.id+" !mp addref "+osuCMD.issuer)
+                    else:
+                        osuIRC.send("PRIVMSG "+item.id+" this command only available to room creator ("+item.maker+"). Ask "+item.maker+" to add you as !ref or make your own room like this by PM me: !make <room_name>")
+
+    def cmdSkip():
+        if(osuCMD.chat[0] == ':!s' or osuCMD.chat[0] == ':!skip'):
+            for item in osuCMD.roomList:
+                if item.id == osuCMD.channel:
+                    if osuCMD.issuer not in item.skip:
+                        item.skip.append(osuCMD.issuer)
+                        minimalskip = int(len(item.player)*0.7)
+                        if minimalskip<1:
+                            minimalskip = 1
+                        osuIRC.send("PRIVMSG "+item.id+" "+osuCMD.issuer+" vote for skip ("+str(len(item.skip))+"/"+str(minimalskip)+")")
+                        if len(item.skip) >= minimalskip:
+                            item.next()
+                    else:
+                        osuIRC.send("PRIVMSG "+osuCMD.issuer+" You already vote for skip ...")
+
+    def cmdAdd():
+        if(osuCMD.chat[0] == ':+' or osuCMD.chat[0] == ':!add'):
+            for item in osuCMD.roomList:
+                if item.id == osuCMD.channel:
+                    if(len(osuCMD.chat) == 2):
+                        if('osu.ppy.sh/b/' in osuCMD.chat[1]):
+                            getmap = osuCMD.chat[1].replace("https://","").replace("http://","").replace("osu.ppy.sh/b/","")
+                            getmap = getmap.split("&")
+                            getmap = getmap[0]
+                            getmap = getmap.split("?")
+                            getmap = getmap[0]
+                            judul = osuAPI.songName(map=getmap)
+                            inRange,inRangeSet = osuAPI.diffInRange(map=getmap,diff=item.difficulty)
+                            if inRange == False:
+                                osuIRC.send("PRIVMSG "+item.id+" added beatmap not in difficulty range! i'll choose one with difficulty in range.")
+                                getmap = osuAPI.mapFromSet(set=inRangeSet,diff=item.difficulty)
+                            if getmap not in item.queue:
+                                item.queue.append(getmap)
+                                osuIRC.send("PRIVMSG "+item.id+" "+judul+" added to queue ("+str(len(item.queue))+")")
+                                if item.nowBM == '0':
+                                    item.next()
+                            else:
+                                osuIRC.send("PRIVMSG "+item.id+" "+judul+" already exist in queue!")
+                        elif('osu.ppy.sh/s/' in osuCMD.chat[1]):
+                            getset = osuCMD.chat[1].replace("https://","").replace("http://","").replace("osu.ppy.sh/s/","")
+                            getmap = osuAPI.mapFromSet(set=getset,diff=item.difficulty)
+                            if getmap != None:
+                                judul = osuAPI.songName(map=getmap)
+                                if getmap not in item.queue:
+                                    item.queue.append(getmap)
+                                    osuIRC.send("PRIVMSG "+item.id+" You input a beatmap set. i'll choose the beatmap for you ...")
+                                    osuIRC.send("PRIVMSG "+item.id+" "+judul+" added to queue ("+str(len(item.queue))+")")
+                                    if item.nowBM == '0':
+                                        item.next()
+                                else:
+                                    osuIRC.send("PRIVMSG "+item.id+" "+judul+" already exist in queue!")
+                            else:
+                                osuIRC.send("PRIVMSG "+item.id+" that beatmap list not have standarized difficulty! make sure it have "+item.difficulty[0]+"-"+item.difficulty[1]+"★ difficulty.")
+                        elif '/beatmapsets/' in osuCMD.chat[1]:
+                            getmap = osuCMD.chat[1].replace("https://","").replace("http://","")
+                            getmap = getmap.split("/")
+                            getmap = getmap[len(getmap)-1]
+                            if "#" in getmap:
+                                getmap = getmap.split("#")
+                                getmap = getmap[0]
+                                getmap = osuAPI.mapFromSet(set=getmap,diff=item.difficulty)
+                                osuIRC.send("PRIVMSG "+item.id+"  You input a beatmap set. i'll choose the difficulty for you ...")
+                            if getmap != None:
+                                inRange,inRangeSet = osuAPI.diffInRange(map=getmap,diff=item.difficulty)
+                                if inRange == False:
+                                    osuIRC.send("PRIVMSG "+item.id+" added beatmap not in difficulty range! i'll choose one with difficulty in range.")
+                                    getmap = osuAPI.mapFromSet(set=inRangeSet,diff=item.difficulty)
+                                judul = osuAPI.songName(map=getmap)
+                                if getmap not in item.queue:
+                                    item.queue.append(getmap)
+                                    osuIRC.send("PRIVMSG "+item.id+" "+judul+" added to queue ("+str(len(item.queue))+")")
+                                    if item.nowBM == '0':
+                                        item.next()
+                                else:
+                                    osuIRC.send("PRIVMSG "+item.id+" "+judul+" already exist in queue!")
+                            else:
+                                osuIRC.send("PRIVMSG "+item.id+" that beatmap list not have standarized difficulty! make sure it have "+item.difficulty[0]+"-"+item.difficulty[1]+"★ difficulty.")
+                        else:
+                            osuIRC.send("PRIVMSG "+item.id+" wrong or unsupported beatmap link.")
+                    else:
+                        osuIRC.send("PRIVMSG "+item.id+" wrong or unsupported beatmap link.")
+
 
 class osuAPI:
-    '''untuk ambil beatmap name, dsb'''
-    KEY = "ad8c161908bcf5bf8f595300537edbbecb7fc17b"         #cari di osu.ppy.sh/p/api
+    KEY = "ad8c161908bcf5bf8f595300537edbbecb7fc17b"
     playlist = []
-    a = 0
-    b = 0
-    diffb = 4
-    diffb = float(diffb)
-    difft = 5
-    difft = float(difft)
-    def tglsekarang():
-        '''get bulan untuk since'''
+
+    def dateNow():
         return time.localtime(time.time())
 
-    def connAPI(since=-1,set=-1,map=-1,mode=0):
-        '''connect ke API osu'''
-        osuAPI.KEY = str(osuAPI.KEY)
-        since = str(since)
-        set = str(set)
-        map = str(map)
-        mode = str(mode)
-        if since != '-1':
-            xsince = '&since='+since
-        else:
-            xsince = ''
-        if set != '-1':
-            xset = '&s='+set
-        else:
-            xset = ''
-        if map != '-1':
-            xmap = '&b='+map
-        else:
-            xmap = ''
-#        print("https://osu.ppy.sh/api/get_beatmaps?k="+osuAPI.KEY+xsince+xset+xmap+"&limit=500&m="+mode)
-        return requests.get("https://osu.ppy.sh/api/get_beatmaps?k="+osuAPI.KEY+xsince+xset+xmap+"&limit=500&m="+mode).json()
+    def songAPI(since='',set='',map='',mode=0):
+        since = '&since='+str(since) if since!='' else ''
+        set = '&s='+str(set) if set!='' else ''
+        map = '&b='+str(map) if map!='' else ''
+        mode = '&m='+str(mode) if mode!='' else ''
+        print("https://osu.ppy.sh/api/get_beatmaps?k=%s%s%s%s%s" %(osuAPI.KEY,since,set,map,mode))
+        return requests.get("https://osu.ppy.sh/api/get_beatmaps?k=%s%s%s%s%s" %(osuAPI.KEY,since,set,map,mode)).json()
 
-#    def getRand(diffb,difft):
-    def getRand():
-        '''get random set playlist. any ranked std map'''
-        sekarang = osuAPI.tglsekarang()
-        if osuAPI.a >= sekarang[1]:
-            osuAPI.a = 0
-            osuAPI.b += 1
-        since = str(sekarang[0]-osuAPI.b)+'-'+str(sekarang[1]-osuAPI.a)+'-1'
-        print(since)
-        data = osuAPI.connAPI(since=since)
-        setid = ''
+    def setRand(last=None):
+        if last == None:
+            temp = osuAPI.dateNow()
+            date = (temp[0],temp[1],1)
+        else:
+            if last[1] > 1:
+                date = (last[0],last[1]-1,1)
+            else:
+                if last[0] > 2014:
+                    date = (last[0]-1,12,1)
+                else:
+                    temp = osuAPI.dateNow()
+                    date = (temp[0],temp[1],1)
+        data = osuAPI.songAPI(since='%d-%d-%d' %date)
+        setid=''
+        pack=[]
         for song in data:
             if setid != song['beatmapset_id']:
-                osuAPI.playlist.append(song['beatmapset_id'])
                 setid = song['beatmapset_id']
-#            if float(song['difficultyrating']) >= float(diffb) and float(song['difficultyrating']) < float(difft) and setid != song['beatmapset_id']:
-#                osuAPI.playlist.append(song['beatmap_id'])
-#                setid = song['beatmapset_id']
-        osuAPI.a += 1
-#        print(osuAPI.playlist)
+                pack.append(setid)
+        return (date,pack)
 
-    def getName(map):
-        data = osuAPI.connAPI(map=map)
-        for song in data:
-            return song['artist']+' - '+song['title']+' ('+song['difficultyrating']+'*)'
+    def songName(map='',set=''):
+        if(map=='' and set==''):
+            raise Exception('need to define at least map or set!')
+        else:
+            data = osuAPI.songAPI(map=map,set=set,mode='')
+            for song in data:
+                return "[%s %s - %s (%.2f★)]" %("https://osu.ppy.sh/b/"+map,song['artist'],song['title'],float(song['difficultyrating']))
 
-    def getmapbyset(set,diffb,difft):
-        data = osuAPI.connAPI(set=set)
+    def mapFromSet(set,diff):
+        data = osuAPI.songAPI(set=set,mode='')
         for song in data:
-            if float(song['difficultyrating']) >= float(diffb) and float(song['difficultyrating']) < float(difft):
+            if(float(song['difficultyrating'])>=float(diff[0]) and float(song['difficultyrating'])<=float(diff[1])):
                 return song['beatmap_id']
 
-## Program start here
+    def diffInRange(map,diff):
+        data = osuAPI.songAPI(map=map)
+        for song in data:
+            if(float(song['difficultyrating'])>float(diff[0]) and float(song['difficultyrating'])<float(diff[1])):
+                return True,song['beatmapset_id']
+            else:
+                return False,song['beatmapset_id']
+
+    def getMaxPP(map_id):
+        mod_list = {'FC':'0','HD':'8','HR':'16','HRHD':'24'}
+        PP = {}
+        for name,mod in mod_list.items():
+            print("GET: https://osu.ppy.sh/api/get_scores?k=%s&b=%s&mods=%s&limit=1" %(osuAPI.KEY,map_id,mod))
+            data = requests.get("https://osu.ppy.sh/api/get_scores?k=%s&b=%s&mods=%s&limit=1" %(osuAPI.KEY,map_id,mod)).json()
+            PP[name] = '0'
+            for map in data:
+                PP[name] = map['pp']
+        return PP
+
+
 def main():
-    '''main program'''
-    connection = osuRC.conn()
-    if connection != True:
-        print(connection)
+    connect = osuIRC.connect()
+    print('connect ok')
+    if connect == False:
+        print(connect)
         quit()
-    osuHost.roomname = input("Room Name: ")
-    osuHost.makeroom()
     while 1:
-        data = osuRC.terima().split("\n")
+        raw = osuIRC.recv()
+        if raw.find('ping cho.ppy.sh') != -1:
+            osuIRC.send('PONG')
+            print('PONG')
+        data = raw.split("\n")
         if len(data)-1 == 0:
-            osuRC.disconnected()
-        for osuRC.baris in data:
-            osuRC.kata = osuRC.baris.split(" ")
-            osuRC.cetak(osuRC.baris)
-            osuHost.getnotif()
-            osuHost.getcommand()
+            osuIRC.DC()
+        for osuIRC.baris in data:
+            osuIRC.kata = osuIRC.baris.split(" ")
+            osuIRC.show(osuIRC.baris)
+            osuCMD.getBasic()
+            if osuCMD.chat != None:
+                osuCMD.getMake()
+                osuCMD.getInvite()
+                osuCMD.getClose()
+                osuCMD.getJoin()
+                osuCMD.getQuit()
+                osuCMD.getGameStart()
+                osuCMD.getGameFinish()
+                osuCMD.getAllReady()
+                osuCMD.cmdQueue()
+                osuCMD.cmdDiff()
+                osuCMD.cmdInfo()
+                osuCMD.cmdReady()
+                osuCMD.cmdSkip()
+                osuCMD.cmdAdd()
+                osuCMD.cmdRef()
+                osuCMD.issuer = None
+                osuCMD.type = None
+                osuCMD.channel = None
+                osuCMD.chat = None
     time.sleep(2)
 
-main()
+if __name__ == '__main__':
+    main()
