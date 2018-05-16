@@ -52,14 +52,15 @@ class osuIRC:
 class osuRoom:
     def __init__(self,maker,name="",id=""):
         self.maker = maker
+        self.roomNumber = 0
         self.nowBM = '0'
+        self.mode = 'std' # std,mania,taiko,ctb
         self.player = []
         self.start = []
         self.skip = []
         self.queue = []
         self.lastRand = None
         self.setRand = []
-        self.roomNumber = 0
         self.difficulty = ['3','4']
         if(name=="" and id!=""):
             self.id = id
@@ -73,12 +74,12 @@ class osuRoom:
             self.getNumber = True
             osuIRC.send("PRIVMSG banchobot !mp make %s | !info" %self.name)
             _thread.start_new_thread(self.getRoomID,())
-            _thread.start_new_thread(self.getRoomNumber,())
+            #_thread.start_new_thread(self.getRoomNumber,())
             print('thread started succesfully')
         _thread.start_new_thread(self.watchdog,())
 
     def watchdog(self):
-        time.sleep(120)
+        time.sleep(60)
         if self.player == []:
             self.close()
             print('watchdog bite')
@@ -107,7 +108,7 @@ class osuRoom:
         print('getting room number...')
         now = time.time()
         begin = now
-        while(self.getID and self.getNumber and now-begin<20):
+        while(self.getNumber and now-begin<20):
             if len(osuIRC.kata) > 2:
                 if osuIRC.kata[1] == "332":
                     self.number = osuIRC.kata[len(osuIRC.kata)-1].replace("#","")
@@ -121,15 +122,18 @@ class osuRoom:
         print('getting room id...')
         now = time.time()
         begin = now
-        while(self.getID and self.getNumber and now-begin<20):
+        while(self.getID and now-begin<20):
             if len(osuIRC.kata) > 2:
                 if osuIRC.kata[1] == "mode":
                     self.id = osuIRC.kata[2]
+                    print("room id found! %s" %self.id)
                     osuIRC.send("PRIVMSG "+self.id+" !mp password")
                     osuIRC.send("PRIVMSG "+self.id+" !mp set 0 0 16")
                     osuIRC.send("PRIVMSG "+self.id+" !mp mods freemod")
+                    print("removing all shit")
                     self.getID = False
                     self.next()
+                    print("close the thread")
             now = time.time()
         if now-begin > 20:
             print('cannot obtain id')
@@ -154,30 +158,38 @@ class osuRoom:
             mods = ['FC','HD','HR','HRHD']
             for mod in mods:
                 if PP[mod] == 'None':
-                    PP[mod] == '0'
-            self.change(self.nowBM)
-            osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" ||   FC: %s pp   HD: %s pp   HR: %s pp   HRHD: %s pp" %(PP['FC'],PP['HD'],PP['HR'],PP['HRHD']))
-            self.start = []
-            self.skip = []
+                    PP[mod] == 'No'
+            if osuAPI.hasMode(self.nowBM,self.mode):
+                self.change(self.nowBM)
+                osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" ||  FC: %s pp  |  HD: %s pp  |  HR: %s pp  |  HRHD: %s pp  ||" %(PP['FC'],PP['HD'],PP['HR'],PP['HRHD']))
+                self.start = []
+                self.skip = []
+            else:
+                osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" skipped because song mode not match criteria!  change mode with !mode <std/taiko/ctb/mania>")
+                self.next()
         else:
             print("get random")
             if self.setRand == []:
                 print('empty set random')
-                self.lastRand,self.setRand = osuAPI.setRand(self.lastRand)
+                self.lastRand,self.setRand = osuAPI.setRand(last = self.lastRand,playMode = self.mode)
             getmap = osuAPI.mapFromSet(self.setRand.pop(0),self.difficulty)
             print(getmap)
             if getmap != None:
                 osuIRC.send("PRIVMSG "+self.id+" no more queueing map, please add with !add <beatmaplink>. i'll choose random for now.")
                 self.nowBM = getmap
-                PP = osuAPI.getMaxPP(self.nowBM)
-                mods = ['FC','HD','HR','HRHD']
-                for mod in mods:
-                    if PP[mod] == 'None':
-                        PP[mod] == '0'
-                self.change(self.nowBM)
-                osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" ||   FC: %s pp   HD: %s pp   HR: %s pp   HRHD: %s pp" %(PP['FC'],PP['HD'],PP['HR'],PP['HRHD']))
-                self.start = []
-                self.skip = []
+                if osuAPI.hasMode(self.nowBM,self.mode):
+                    PP = osuAPI.getMaxPP(self.nowBM)
+                    mods = ['FC','HD','HR','HRHD']
+                    for mod in mods:
+                        if PP[mod] == 'None':
+                            PP[mod] == 'No'
+                    self.change(self.nowBM)
+                    osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" ||  FC: %s pp  |  HD: %s pp  |  HR: %s pp  |  HRHD: %s pp  ||" %(PP['FC'],PP['HD'],PP['HR'],PP['HRHD']))
+                    self.start = []
+                    self.skip = []
+                else:
+                    osuIRC.send("PRIVMSG "+self.id+" "+osuAPI.songName(self.nowBM)+" skipped because song mode not match criteria!  change mode with !mode <std/taiko/ctb/mania>")
+                    self.next()
             else:
                 self.next()
 
@@ -434,6 +446,7 @@ class osuCMD:
 
 class osuAPI:
     KEY = "ad8c161908bcf5bf8f595300537edbbecb7fc17b"
+    MODE = {'std':'0','taiko':'1','ctb':'2','mania':'3'}
     playlist = []
 
     def dateNow():
@@ -447,7 +460,7 @@ class osuAPI:
         print("https://osu.ppy.sh/api/get_beatmaps?k=%s%s%s%s%s" %(osuAPI.KEY,since,set,map,mode))
         return requests.get("https://osu.ppy.sh/api/get_beatmaps?k=%s%s%s%s%s" %(osuAPI.KEY,since,set,map,mode)).json()
 
-    def setRand(last=None):
+    def setRand(playMode='std',last=None):
         if last == None:
             temp = osuAPI.dateNow()
             date = (temp[0],temp[1],1)
@@ -460,7 +473,7 @@ class osuAPI:
                 else:
                     temp = osuAPI.dateNow()
                     date = (temp[0],temp[1],1)
-        data = osuAPI.songAPI(since='%d-%d-%d' %date)
+        data = osuAPI.songAPI(since='%d-%d-%d' %date, mode=osuAPI.MODE[playMode])
         setid=''
         pack=[]
         for song in data:
@@ -472,10 +485,12 @@ class osuAPI:
     def songName(map='',set=''):
         if(map=='' and set==''):
             raise Exception('need to define at least map or set!')
+            return('None')
         else:
             data = osuAPI.songAPI(map=map,set=set,mode='')
             for song in data:
                 return "[%s %s - %s (%.2f★)]" %("https://osu.ppy.sh/b/"+map,song['artist'],song['title'],float(song['difficultyrating']))
+            return('None')
 
     def mapFromSet(set,diff):
         data = osuAPI.songAPI(set=set,mode='')
@@ -497,10 +512,18 @@ class osuAPI:
         for name,mod in mod_list.items():
             print("GET: https://osu.ppy.sh/api/get_scores?k=%s&b=%s&mods=%s&limit=1" %(osuAPI.KEY,map_id,mod))
             data = requests.get("https://osu.ppy.sh/api/get_scores?k=%s&b=%s&mods=%s&limit=1" %(osuAPI.KEY,map_id,mod)).json()
-            PP[name] = '0'
+            PP[name] = 'No'
             for map in data:
                 PP[name] = map['pp']
         return PP
+
+    def hasMode(map,mode):
+        data = osuAPI.songAPI(map=map)
+        for song in data:
+            if song['mode'] == osuAPI.MODE[mode]:
+                return True
+            else:
+                return False
 
 
 def main():
