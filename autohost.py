@@ -1,3 +1,5 @@
+#!/usr/bin/python3.6
+
 import sys,socket,string,os,time,random,json,_thread,math
 from threading import Timer
 try:
