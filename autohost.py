@@ -22,7 +22,7 @@ class osuIRC:
     host = "irc.kawata.pw"
     port = 6667
     UID = "AutoHost".lower()
-    KEY = "b4e20c67424bd991d0c9b2d143a5c4df".lower()
+    KEY = "PLACEHOLDER".lower()
 
     def connect():
         '''sambung ke server IRC osu!'''
