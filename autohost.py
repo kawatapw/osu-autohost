@@ -19,10 +19,10 @@ KEY = "ad8c161908bcf5bf8f595300537edbbecb7fc17b"
 
 class osuIRC:
     '''osu IRC class, dipakai untuk connect ke server irc, terima dan kirim data.'''
-    host = "irc.ppy.sh"
+    host = "irc.kawata.pw"
     port = 6667
-    UID = "Iam2Awesome".lower()
-    KEY = "f0afe733".lower()
+    UID = "AutoHost".lower()
+    KEY = "PLACEHOLDER".lower()
 
     def connect():
         '''sambung ke server IRC osu!'''
